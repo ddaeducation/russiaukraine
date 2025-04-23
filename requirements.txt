@@ -1,0 +1,8 @@
+requests
+numpy
+pandas
+psycopg2-binary
+python-dotenv
+openpyxl
+xlrd 
+sqlalchemy
