@@ -36,6 +36,8 @@ if response.status_code == 200:
 
     csv_data = io.StringIO(response.text)
     df = pd.read_csv(csv_data, sep=";", on_bad_lines="skip")
+    # Droping the columns because it is generating the missing values
+    df.drop(columns='Combat_Intensity', inplace=True, errors='ignore')
 
     # Print all column names to check
     print("\n🔍 Available Columns in CSV:")
@@ -95,7 +97,6 @@ if response.status_code == 200:
             Captured INT,
             Civilian_Casualities INT,
             New_Recruits INT,
-            Combat_Intensity FLOAT,
             Territory_Status TEXT,
             Percentage_Occupied FLOAT,
             Area_Occupied INT,
@@ -107,7 +108,7 @@ if response.status_code == 200:
     insert_query = f"""
         INSERT INTO {schema_name}.{table_name}(
             "start", "end", "date", Country, Event, Oblast, Casualties, Injured, Captured,
-            Civilian_Casualities, New_Recruits, Combat_Intensity, Territory_Status,
+            Civilian_Casualities, New_Recruits, Territory_Status,
             Percentage_Occupied, Area_Occupied, Total_Casualties
         ) VALUES %s
     """
@@ -115,7 +116,7 @@ if response.status_code == 200:
     # # Define the list of expected columns that should exist in the dataframe
     expected = [
         "start", "end", "Date", "Country", "Event", "Oblast", "Casualties", "Injured", "Captured",
-        "Civilian_Casualities", "New_Recruits", "Combat_Intensity", "Territory_Status",
+        "Civilian_Casualities", "New_Recruits", "Territory_Status",
         "Percentage_Occupied", "Area_Occupied", "Total_Casualties"
     ]
     # Loop through each expected column and check if it exists in the dataframe
