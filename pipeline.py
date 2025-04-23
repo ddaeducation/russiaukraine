@@ -38,7 +38,8 @@ if response.status_code == 200:
     df = pd.read_csv(csv_data, sep=";", on_bad_lines="skip")
     # Droping the columns because it is generating the missing values
     df.drop(columns='Combat_Intensity', inplace=True, errors='ignore')
-
+    # Changing the data type of columns
+    df['Captured'] = df['Captured'].astype('Int64', errors='ignore')
     # Print all column names to check
     print("\n🔍 Available Columns in CSV:")
     print(df.columns.tolist())
