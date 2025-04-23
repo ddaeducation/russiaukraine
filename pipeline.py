@@ -27,7 +27,6 @@ PG_USER = os.getenv("PG_USER")
 schema_name = "warrecords"
 table_name = "ukrainerussia"
 
-# Step 1: Fetch the data from Kobotoolbox
 print("Fetching the Data From Kobotoolbox ...")
 response = requests.get(KOBO_CSV_URL, auth=HTTPBasicAuth(KOBO_USERNAME, KOBO_PASSWORD))
 
@@ -36,39 +35,36 @@ if response.status_code == 200:
 
     csv_data = io.StringIO(response.text)
     df = pd.read_csv(csv_data, sep=";", on_bad_lines="skip")
-    # Droping the columns because it is generating the missing values
-    df.drop(columns='Combat_Intensity', inplace=True, errors='ignore')
-    # Changing the data type of columns
-    df['Captured'] = df['Captured'].astype('Int64', errors='ignore')
-    # Print all column names to check
+
+    # Drop problematic columns if they exist
+    df.drop(columns='Cambat Intensity', inplace=True, errors='ignore')
+
+    # Change types
+    if 'Captured' in df.columns:
+        df['Captured'] = pd.to_numeric(df['Captured'], errors='coerce').astype('Int64')
+
     print("\n🔍 Available Columns in CSV:")
     print(df.columns.tolist())
 
-    # Step 2: Clean column names
+    # Clean column names
     df.columns = [col.strip().replace(" ", "_").replace("&", "and").replace("-", "_") for col in df.columns]
 
     print("\n✅ Cleaned Column Names:")
     print(df.columns.tolist())
 
-     #################################################
-     # In case we remove this part, we will remove Total_Casualties everywhere too 
-
-    # Try to compute Total_Casualties only if required columns are present
+     ##############################
+    # Compute Total_Casualties if possible
     required_cols = ['Casualties', 'Injured', 'Captured']
-    missing = [col for col in required_cols if col not in df.columns]
-
-    if missing:
-        print(f"\n⚠️ Missing columns for Total_Casualties calculation: {missing}")
-        df['Total_Casualties'] = np.nan
+    if all(col in df.columns for col in required_cols):
+        df['Total_Casualties'] = df[required_cols].sum(axis=1, skipna=True)
     else:
-        df['Total_Casualties'] = df[['Casualties', 'Injured', 'Captured']].sum(axis=1, skipna=True)
+        df['Total_Casualties'] = np.nan
+        print(f"\n⚠️ Missing columns for Total_Casualties calculation: {[col for col in required_cols if col not in df.columns]}")
+    ####################################
     
-    ####################################################################
-
-    # Convert 'Date' to datetime
+    # Convert date
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
 
-    # Step 3: Upload to PostgreSQL
     print("Uploading data to PostgreSQL ...")
     conn = psycopg2.connect(
         host=PG_HOST,
@@ -79,10 +75,7 @@ if response.status_code == 200:
     )
     cur = conn.cursor()
 
-    # Create schema if not exists
     cur.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name};")
-
-    # Drop and recreate table
     cur.execute(f"DROP TABLE IF EXISTS {schema_name}.{table_name};")
     cur.execute(f"""
         CREATE TABLE {schema_name}.{table_name}(
@@ -105,7 +98,19 @@ if response.status_code == 200:
         );
     """)
 
-    # Insert data
+    expected = [
+        "start", "end", "Date", "Country", "Event", "Oblast", "Casualties", "Injured", "Captured",
+        "Civilian_Casualities", "New_Recruits", "Territory_Status",
+        "Percentage_Occupied", "Area_Occupied", "Total_Casualties"
+    ]
+    for col in expected:
+        if col not in df.columns:
+            df[col] = None
+
+    # Convert to Python native types
+    df = df[expected].astype(object).where(pd.notnull(df), None)
+
+    insert_data = df.values.tolist()
     insert_query = f"""
         INSERT INTO {schema_name}.{table_name}(
             "start", "end", "date", Country, Event, Oblast, Casualties, Injured, Captured,
@@ -114,29 +119,9 @@ if response.status_code == 200:
         ) VALUES %s
     """
 
-    # # Define the list of expected columns that should exist in the dataframe
-    expected = [
-        "start", "end", "Date", "Country", "Event", "Oblast", "Casualties", "Injured", "Captured",
-        "Civilian_Casualities", "New_Recruits", "Territory_Status",
-        "Percentage_Occupied", "Area_Occupied", "Total_Casualties"
-    ]
-    # Loop through each expected column and check if it exists in the dataframe
-    for col in expected:
-        # If a column is missing, add it to the dataframe and fill it with None
-        if col not in df.columns:
-            df[col] = None  # Fill missing with None
-    # Prepare the data for insertion into the PostgreSQL database
-    # # Extract the rows from the dataframe, but only for the expected columns
-    insert_data = df[expected].values.tolist()
-    # Insert the data into PostgreSQL using the execute_values function
-    # This is an efficient way to insert multiple rows at once
     execute_values(cur, insert_query, insert_data)
-    # Commit the transaction to save the changes to the database
     conn.commit()
-    # Close the database connection after the operation is complete
     conn.close()
-    # Print a success message if the data has been successfully loaded
-
     print("✅ Data successfully loaded into PostgreSQL.")
 else:
     print(f"❌ Failed to fetch data from Kobotoolbox: {response.status_code}")

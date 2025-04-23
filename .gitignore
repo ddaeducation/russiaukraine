@@ -1,0 +1,7 @@
+# environment variables
+.env
+# local configuration files
+*.local
+# IDEs and editors
+.vscode
+.idea
